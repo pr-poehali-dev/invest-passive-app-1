@@ -371,10 +371,16 @@ const Index = () => {
               <div className="flex gap-2">
                 <Input
                   readOnly
-                  value="https://invest-passive.com/ref/USER123"
+                  value={`https://invest-passive.com/ref/${userData.referral_code}`}
                   className="bg-background/50"
                 />
-                <Button className="gradient-primary text-white">
+                <Button 
+                  className="gradient-primary text-white"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`https://invest-passive.com/ref/${userData.referral_code}`);
+                    alert('Ссылка скопирована!');
+                  }}
+                >
                   <Icon name="Copy" className="w-4 h-4" />
                 </Button>
               </div>
@@ -414,7 +420,7 @@ const Index = () => {
                 <Icon name="Gift" className="w-5 h-5" />
                 Вступить в чат проекта
               </h3>
-              {bonusProgress.chatJoined ? (
+              {userData.chat_bonus_claimed ? (
                 <div className="flex items-center gap-3">
                   <Icon name="CheckCircle" className="w-6 h-6 text-success" />
                   <div>
@@ -423,9 +429,13 @@ const Index = () => {
                   </div>
                 </div>
               ) : (
-                <Button className="w-full gradient-primary text-white" onClick={() => window.open('https://t.me/+tDcs_yy5mcU4MTgx', '_blank')}>
-                  <Icon name="MessageCircle" className="w-4 h-4 mr-2" />
-                  Вступить в чат (+100 ₽)
+                <Button 
+                  className="w-full gradient-primary text-white" 
+                  onClick={claimChatBonus}
+                  disabled={claiming}
+                >
+                  <Icon name="Gift" className="w-4 h-4 mr-2" />
+                  {claiming ? 'Получение...' : 'Получить бонус 100 ₽'}
                 </Button>
               )}
             </Card>
@@ -438,9 +448,9 @@ const Index = () => {
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Прогресс</span>
-                  <span className="font-bold">{bonusProgress.referralsCount} / 25</span>
+                  <span className="font-bold">{userData.referrals.total} / 25</span>
                 </div>
-                <Progress value={(bonusProgress.referralsCount / 25) * 100} className="h-3" />
+                <Progress value={(userData.referrals.total / 25) * 100} className="h-3" />
                 <div className="p-4 rounded-lg bg-secondary/10 border border-secondary/20">
                   <p className="text-sm text-muted-foreground">Награда за выполнение</p>
                   <p className="text-2xl font-bold text-secondary">2000 ₽</p>

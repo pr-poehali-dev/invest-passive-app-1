@@ -4,7 +4,6 @@ import psycopg2
 from datetime import datetime
 import secrets
 import string
-import requests
 
 def handler(event: dict, context) -> dict:
     """API для управления балансом, транзакциями и бонусами пользователей"""
@@ -107,19 +106,6 @@ def handler(event: dict, context) -> dict:
             
             if user[1]:
                 return create_response(400, {'error': 'Bonus already claimed'})
-            
-            bot_token = os.environ.get('TELEGRAM_BOT_TOKEN')
-            if bot_token:
-                chat_id = '@invest_passive_chat'
-                check_url = f'https://api.telegram.org/bot{bot_token}/getChatMember'
-                response = requests.get(check_url, params={'chat_id': chat_id, 'user_id': telegram_id})
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    status = data.get('result', {}).get('status', '')
-                    
-                    if status not in ['member', 'administrator', 'creator']:
-                        return create_response(400, {'error': 'Not subscribed to chat'})
             
             cur.execute("UPDATE users SET balance = balance + 100, chat_bonus_claimed = TRUE WHERE id = %s RETURNING balance", (user[0],))
             new_balance = cur.fetchone()[0]
