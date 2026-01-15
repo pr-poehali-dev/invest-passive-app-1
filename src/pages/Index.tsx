@@ -12,38 +12,111 @@ import { Label } from '@/components/ui/label';
 
 interface Transaction {
   id: string;
-  type: 'deposit' | 'withdrawal' | 'profit' | 'referral';
+  type: 'deposit' | 'withdrawal' | 'profit' | 'referral' | 'bonus';
   amount: number;
   status: 'success' | 'pending' | 'rejected';
-  date: Date;
+  date: string;
 }
 
+interface UserData {
+  id: number;
+  telegram_id: number;
+  username: string;
+  balance: number;
+  total_invested: number;
+  total_withdrawn: number;
+  referral_code: string;
+  chat_bonus_claimed: boolean;
+  active_deposits: number;
+  referrals: {
+    total: number;
+    active: number;
+    income: number;
+  };
+  transactions: Transaction[];
+}
+
+const API_URL = 'https://functions.poehali.dev/97d91ec4-9a80-46d9-a61b-c78ae0123688';
+
 const Index = () => {
-  const [balance, setBalance] = useState(15247.83);
-  const [profit24h, setProfitH24] = useState(1616.27);
-  const [totalInvested, setTotalInvested] = useState(50000);
-  const [totalWithdrawn, setTotalWithdrawn] = useState(8340);
-  const [referrals, setReferrals] = useState({ total: 47, active: 32, income: 11750 });
+  const [userData, setUserData] = useState<UserData | null>(null);
+  const [loading, setLoading] = useState(true);
   const [depositAmount, setDepositAmount] = useState(10000);
   const [calculatorAmount, setCalculatorAmount] = useState([25000]);
   const [showDepositDialog, setShowDepositDialog] = useState(false);
   const [showWithdrawDialog, setShowWithdrawDialog] = useState(false);
-  const [bonusProgress, setBonusProgress] = useState({ chatJoined: true, referralsCount: 18 });
+  const [claiming, setClaiming] = useState(false);
 
-  const transactions: Transaction[] = [
-    { id: '1', type: 'profit', amount: 530, status: 'success', date: new Date() },
-    { id: '2', type: 'referral', amount: 2500, status: 'success', date: new Date(Date.now() - 3600000) },
-    { id: '3', type: 'deposit', amount: 10000, status: 'success', date: new Date(Date.now() - 7200000) },
-    { id: '4', type: 'withdrawal', amount: 5000, status: 'pending', date: new Date(Date.now() - 10800000) },
-  ];
+  const DEMO_TELEGRAM_ID = 123456789;
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setBalance(prev => prev + (totalInvested * 0.106 / 86400));
-      setProfitH24(prev => prev + 0.01);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [totalInvested]);
+    fetchUserData();
+  }, []);
+
+  const fetchUserData = async () => {
+    try {
+      const response = await fetch(`${API_URL}?action=get_user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telegram_id: DEMO_TELEGRAM_ID,
+          username: 'demo_user'
+        })
+      });
+      const data = await response.json();
+      setUserData(data);
+    } catch (error) {
+      console.error('Failed to fetch user data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const claimChatBonus = async () => {
+    if (!userData || userData.chat_bonus_claimed) return;
+    
+    setClaiming(true);
+    try {
+      const response = await fetch(`${API_URL}?action=claim_chat_bonus`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegram_id: DEMO_TELEGRAM_ID })
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        await fetchUserData();
+      } else {
+        alert(data.error || 'Ошибка при получении бонуса');
+      }
+    } catch (error) {
+      console.error('Failed to claim bonus:', error);
+      alert('Ошибка сети');
+    } finally {
+      setClaiming(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Загрузка...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!userData) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-destructive">Ошибка загрузки данных</p>
+        </div>
+      </div>
+    );
+  }
 
   const calculateDailyProfit = (amount: number) => (amount * 0.106).toFixed(2);
   const calculateMonthlyProfit = (amount: number) => (amount * 0.106 * 30).toFixed(2);
@@ -54,6 +127,7 @@ const Index = () => {
       case 'withdrawal': return 'ArrowUpFromLine';
       case 'profit': return 'TrendingUp';
       case 'referral': return 'Users';
+      case 'bonus': return 'Gift';
       default: return 'CircleDollarSign';
     }
   };
@@ -120,10 +194,10 @@ const Index = () => {
 
           <TabsContent value="dashboard" className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard title="Баланс" value={balance} icon="Wallet" gradient />
-              <StatCard title="Прибыль 24ч" value={profit24h} icon="TrendingUp" />
-              <StatCard title="Партнеры" value={`${referrals.active}/${referrals.total}`} icon="Users" />
-              <StatCard title="Выведено" value={totalWithdrawn} icon="ArrowUpFromLine" />
+              <StatCard title="Баланс" value={userData.balance} icon="Wallet" gradient />
+              <StatCard title="Прибыль 24ч" value={(userData.total_invested * 0.106).toFixed(2)} icon="TrendingUp" />
+              <StatCard title="Партнеры" value={`${userData.referrals.active}/${userData.referrals.total}`} icon="Users" />
+              <StatCard title="Выведено" value={userData.total_withdrawn} icon="ArrowUpFromLine" />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -154,7 +228,7 @@ const Index = () => {
                   История операций
                 </h3>
                 <div className="space-y-3 max-h-64 overflow-y-auto">
-                  {transactions.map((tx) => (
+                  {userData.transactions.length > 0 ? userData.transactions.map((tx) => (
                     <div key={tx.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-all">
                       <div className="flex items-center gap-3">
                         <div className="p-2 rounded-lg bg-primary/10">
@@ -163,7 +237,7 @@ const Index = () => {
                         <div>
                           <p className="font-semibold">{tx.amount.toLocaleString('ru-RU')} ₽</p>
                           <p className="text-xs text-muted-foreground">
-                            {tx.date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                            {new Date(tx.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
                           </p>
                         </div>
                       </div>
@@ -171,7 +245,9 @@ const Index = () => {
                         {tx.status === 'success' ? 'Успешно' : tx.status === 'pending' ? 'Ожидание' : 'Отменено'}
                       </Badge>
                     </div>
-                  ))}
+                  )) : (
+                    <p className="text-center text-muted-foreground py-8">История пуста</p>
+                  )}
                 </div>
               </Card>
             </div>
@@ -179,9 +255,9 @@ const Index = () => {
 
           <TabsContent value="portfolio" className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <StatCard title="Всего вложено" value={totalInvested} icon="PiggyBank" gradient />
-              <StatCard title="Активные депозиты" value={1} icon="Activity" />
-              <StatCard title="Доход в сутки" value={totalInvested * 0.106} icon="TrendingUp" />
+              <StatCard title="Всего вложено" value={userData.total_invested} icon="PiggyBank" gradient />
+              <StatCard title="Активные депозиты" value={userData.active_deposits > 0 ? 1 : 0} icon="Activity" />
+              <StatCard title="Доход в сутки" value={userData.total_invested * 0.106} icon="TrendingUp" />
             </div>
 
             <Card className="p-6 gradient-card">
@@ -229,11 +305,11 @@ const Index = () => {
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Сумма депозита</span>
-                  <span className="font-bold text-xl">{totalInvested.toLocaleString('ru-RU')} ₽</span>
+                  <span className="font-bold text-xl">{userData.total_invested.toLocaleString('ru-RU')} ₽</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Накоплено процентов</span>
-                  <span className="font-bold text-xl text-success">{(balance - totalInvested + totalWithdrawn).toLocaleString('ru-RU', { minimumFractionDigits: 2 })} ₽</span>
+                  <span className="font-bold text-xl text-success">{(userData.balance - userData.total_invested).toLocaleString('ru-RU', { minimumFractionDigits: 2 })} ₽</span>
                 </div>
                 <div className="mt-4">
                   <div className="flex justify-between mb-2">
@@ -249,9 +325,9 @@ const Index = () => {
           <TabsContent value="wallet" className="space-y-6">
             <Card className="p-6 gradient-card">
               <h3 className="text-2xl font-bold mb-2">Доступно к выводу</h3>
-              <p className="text-4xl font-bold text-gradient mb-4">{(balance - totalInvested).toLocaleString('ru-RU', { minimumFractionDigits: 2 })} ₽</p>
+              <p className="text-4xl font-bold text-gradient mb-4">{(userData.balance - userData.total_invested).toLocaleString('ru-RU', { minimumFractionDigits: 2 })} ₽</p>
               <p className="text-sm text-muted-foreground mb-6">Минимальная сумма вывода: 100 ₽</p>
-              <Button onClick={() => setShowWithdrawDialog(true)} className="w-full gradient-primary text-white hover:opacity-90" disabled={balance - totalInvested < 100}>
+              <Button onClick={() => setShowWithdrawDialog(true)} className="w-full gradient-primary text-white hover:opacity-90" disabled={(userData.balance - userData.total_invested) < 100}>
                 <Icon name="ArrowUpFromLine" className="w-4 h-4 mr-2" />
                 Вывести средства
               </Button>
@@ -282,9 +358,9 @@ const Index = () => {
 
           <TabsContent value="referrals" className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <StatCard title="Всего рефералов" value={referrals.total} icon="Users" gradient />
-              <StatCard title="Активных" value={referrals.active} icon="UserCheck" />
-              <StatCard title="Доход" value={referrals.income} icon="DollarSign" />
+              <StatCard title="Всего рефералов" value={userData.referrals.total} icon="Users" gradient />
+              <StatCard title="Активных" value={userData.referrals.active} icon="UserCheck" />
+              <StatCard title="Доход" value={userData.referrals.income} icon="DollarSign" />
             </div>
 
             <Card className="p-6 gradient-card">

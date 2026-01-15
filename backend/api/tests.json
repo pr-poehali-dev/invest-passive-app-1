@@ -1,0 +1,37 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS request for CORS",
+      "method": "OPTIONS",
+      "path": "/?action=get_user",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Get user data - missing telegram_id",
+      "method": "POST",
+      "path": "/?action=get_user",
+      "body": {},
+      "expectedStatus": 400,
+      "expectedBody": {
+        "error": "telegram_id required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Create new user",
+      "method": "POST",
+      "path": "/?action=get_user",
+      "body": {
+        "telegram_id": 123456789,
+        "username": "test_user"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "telegram_id": 123456789,
+        "balance": 0,
+        "referral_code": "string"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}
