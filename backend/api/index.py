@@ -4,6 +4,7 @@ import psycopg2
 from datetime import datetime
 import secrets
 import string
+import hashlib
 
 def handler(event: dict, context) -> dict:
     """API для управления балансом, транзакциями и бонусами пользователей"""
@@ -184,6 +185,60 @@ def handler(event: dict, context) -> dict:
             cur.close()
             conn.close()
             return create_response(200, result)
+        
+        elif method == 'POST' and path == 'register':
+            body = json.loads(body_str) if body_str else {}
+            email = body.get('email', '')
+            password = body.get('password', '')
+            username = body.get('username', '')
+            
+            if not email or not password:
+                return create_response(400, {'error': 'Email and password required'})
+            
+            cur.execute("SELECT id FROM users WHERE email = %s", (email,))
+            existing = cur.fetchone()
+            
+            if existing:
+                return create_response(400, {'error': 'Email already registered'})
+            
+            password_hash = hashlib.sha256(password.encode()).hexdigest()
+            ref_code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+            telegram_id = secrets.randbelow(1000000000) + 100000000
+            
+            cur.execute(
+                "INSERT INTO users (telegram_id, email, password_hash, username, referral_code) VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                (telegram_id, email, password_hash, username or email.split('@')[0], ref_code)
+            )
+            new_user_id = cur.fetchone()[0]
+            conn.commit()
+            
+            token = hashlib.sha256(f"{email}{telegram_id}{secrets.token_hex(16)}".encode()).hexdigest()
+            
+            cur.close()
+            conn.close()
+            return create_response(200, {'success': True, 'token': token, 'message': 'Registration successful'})
+        
+        elif method == 'POST' and path == 'login':
+            body = json.loads(body_str) if body_str else {}
+            email = body.get('email', '')
+            password = body.get('password', '')
+            
+            if not email or not password:
+                return create_response(400, {'error': 'Email and password required'})
+            
+            password_hash = hashlib.sha256(password.encode()).hexdigest()
+            
+            cur.execute("SELECT id, telegram_id, username FROM users WHERE email = %s AND password_hash = %s", (email, password_hash))
+            user = cur.fetchone()
+            
+            if not user:
+                return create_response(401, {'error': 'Invalid email or password'})
+            
+            token = hashlib.sha256(f"{email}{user[1]}{secrets.token_hex(16)}".encode()).hexdigest()
+            
+            cur.close()
+            conn.close()
+            return create_response(200, {'success': True, 'token': token, 'telegram_id': user[1], 'username': user[2]})
         
         elif method == 'POST' and path == 'register_with_referral':
             body = json.loads(body_str) if body_str else {}

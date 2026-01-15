@@ -7,29 +7,29 @@
       "expectedStatus": 200
     },
     {
-      "name": "Get user data - missing telegram_id",
+      "name": "Register - missing data",
       "method": "POST",
-      "path": "/?action=get_user",
-      "body": {},
+      "path": "/?action=register",
+      "body": {
+        "email": "test@example.com"
+      },
       "expectedStatus": 400,
       "expectedBody": {
-        "error": "telegram_id required"
+        "error": "Email and password required"
       },
       "bodyMatcher": "partial"
     },
     {
-      "name": "Create new user",
+      "name": "Login - invalid credentials",
       "method": "POST",
-      "path": "/?action=get_user",
+      "path": "/?action=login",
       "body": {
-        "telegram_id": 999888777,
-        "username": "test_user"
+        "email": "nonexistent@example.com",
+        "password": "wrongpass"
       },
-      "expectedStatus": 200,
+      "expectedStatus": 401,
       "expectedBody": {
-        "telegram_id": 999888777,
-        "balance": 0,
-        "referral_code": "string"
+        "error": "Invalid email or password"
       },
       "bodyMatcher": "partial"
     },

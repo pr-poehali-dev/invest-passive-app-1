@@ -41,10 +41,19 @@ const API_URL = 'https://functions.poehali.dev/97d91ec4-9a80-46d9-a61b-c78ae0123
 const Index = () => {
   const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showAuthDialog, setShowAuthDialog] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authUsername, setAuthUsername] = useState('');
   const [depositAmount, setDepositAmount] = useState(10000);
   const [calculatorAmount, setCalculatorAmount] = useState([25000]);
   const [showDepositDialog, setShowDepositDialog] = useState(false);
   const [showWithdrawDialog, setShowWithdrawDialog] = useState(false);
+  const [showCryptoDialog, setShowCryptoDialog] = useState(false);
+  const [cryptoCurrency, setCryptoCurrency] = useState('USDT');
+  const [cryptoAmount, setCryptoAmount] = useState('');
   const [claiming, setClaiming] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawCard, setWithdrawCard] = useState('');
@@ -53,17 +62,33 @@ const Index = () => {
   const DEMO_TELEGRAM_ID = 123456789;
 
   useEffect(() => {
-    fetchUserData();
+    const savedAuth = localStorage.getItem('invest_auth');
+    if (savedAuth) {
+      const authData = JSON.parse(savedAuth);
+      setIsAuthenticated(true);
+      fetchUserData();
+    } else {
+      setLoading(false);
+      setShowAuthDialog(true);
+    }
   }, []);
 
   const fetchUserData = async () => {
     try {
+      const savedAuth = localStorage.getItem('invest_auth');
+      let telegramId = DEMO_TELEGRAM_ID;
+      
+      if (savedAuth) {
+        const authData = JSON.parse(savedAuth);
+        telegramId = authData.telegram_id || DEMO_TELEGRAM_ID;
+      }
+
       const response = await fetch(`${API_URL}?action=get_user`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          telegram_id: DEMO_TELEGRAM_ID,
-          username: 'demo_user'
+          telegram_id: telegramId,
+          username: 'user'
         })
       });
       const data = await response.json();
@@ -75,6 +100,15 @@ const Index = () => {
     }
   };
 
+  const getUserTelegramId = () => {
+    const savedAuth = localStorage.getItem('invest_auth');
+    if (savedAuth) {
+      const authData = JSON.parse(savedAuth);
+      return authData.telegram_id || DEMO_TELEGRAM_ID;
+    }
+    return DEMO_TELEGRAM_ID;
+  };
+
   const claimChatBonus = async () => {
     if (!userData || userData.chat_bonus_claimed) return;
     
@@ -83,7 +117,7 @@ const Index = () => {
       const response = await fetch(`${API_URL}?action=claim_chat_bonus`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telegram_id: DEMO_TELEGRAM_ID })
+        body: JSON.stringify({ telegram_id: getUserTelegramId() })
       });
       const data = await response.json();
       
@@ -113,7 +147,7 @@ const Index = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          telegram_id: DEMO_TELEGRAM_ID,
+          telegram_id: getUserTelegramId(),
           amount: depositAmount
         })
       });
@@ -159,7 +193,7 @@ const Index = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          telegram_id: DEMO_TELEGRAM_ID,
+          telegram_id: getUserTelegramId(),
           amount: amount,
           card: withdrawCard
         })
@@ -183,6 +217,77 @@ const Index = () => {
     }
   };
 
+  const handleAuth = async () => {
+    if (!authEmail || !authPassword) {
+      alert('Заполните все поля');
+      return;
+    }
+
+    if (authMode === 'register' && !authUsername) {
+      alert('Укажите имя пользователя');
+      return;
+    }
+
+    setProcessing(true);
+    try {
+      const action = authMode === 'login' ? 'login' : 'register';
+      const response = await fetch(`${API_URL}?action=${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: authEmail,
+          password: authPassword,
+          username: authMode === 'register' ? authUsername : undefined
+        })
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        localStorage.setItem('invest_auth', JSON.stringify({ 
+          email: authEmail, 
+          token: data.token,
+          telegram_id: data.telegram_id || Date.now()
+        }));
+        setIsAuthenticated(true);
+        setShowAuthDialog(false);
+        await fetchUserData();
+        alert(`✅ ${authMode === 'login' ? 'Вход выполнен' : 'Регистрация успешна'}!`);
+      } else {
+        alert(data.error || 'Ошибка авторизации');
+      }
+    } catch (error) {
+      console.error('Auth error:', error);
+      alert('Ошибка сети');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleCryptoDeposit = () => {
+    const amount = parseFloat(cryptoAmount);
+    if (amount < 10) {
+      alert('Минимальная сумма: 10 USDT');
+      return;
+    }
+
+    const cryptoAddresses: Record<string, string> = {
+      USDT: 'TRC20: TXyZ123abc456def789ghi012jkl345mno678pqr',
+      BTC: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa',
+      ETH: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
+      BNB: 'bnb1xy2z3abc4def5ghi6jkl7mno8pqr9stu0vwx'
+    };
+
+    alert(`💰 Переведите ${amount} ${cryptoCurrency} на адрес:\n\n${cryptoAddresses[cryptoCurrency]}\n\nПосле перевода средства будут зачислены автоматически.`);
+    setShowCryptoDialog(false);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('invest_auth');
+    setIsAuthenticated(false);
+    setUserData(null);
+    setShowAuthDialog(true);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -194,13 +299,72 @@ const Index = () => {
     );
   }
 
-  if (!userData) {
+  if (!isAuthenticated || !userData) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-destructive">Ошибка загрузки данных</p>
+      <>
+        <div className="min-h-screen bg-background flex items-center justify-center p-4">
+          <Card className="w-full max-w-md p-8 gradient-card">
+            <div className="text-center mb-8">
+              <h1 className="text-4xl font-bold text-gradient mb-2">Invest Passive</h1>
+              <p className="text-muted-foreground">Платформа пассивного инвестирования</p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <Label>Email</Label>
+                <Input
+                  type="email"
+                  placeholder="your@email.com"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  className="mt-2"
+                />
+              </div>
+
+              {authMode === 'register' && (
+                <div>
+                  <Label>Имя пользователя</Label>
+                  <Input
+                    placeholder="Username"
+                    value={authUsername}
+                    onChange={(e) => setAuthUsername(e.target.value)}
+                    className="mt-2"
+                  />
+                </div>
+              )}
+
+              <div>
+                <Label>Пароль</Label>
+                <Input
+                  type="password"
+                  placeholder="••••••••"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  className="mt-2"
+                />
+              </div>
+
+              <Button
+                className="w-full gradient-primary text-white"
+                onClick={handleAuth}
+                disabled={processing}
+              >
+                <Icon name={authMode === 'login' ? 'LogIn' : 'UserPlus'} className="w-4 h-4 mr-2" />
+                {processing ? 'Обработка...' : authMode === 'login' ? 'Войти' : 'Зарегистрироваться'}
+              </Button>
+
+              <div className="text-center">
+                <button
+                  onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
+                  className="text-sm text-primary hover:underline"
+                >
+                  {authMode === 'login' ? 'Нет аккаунта? Зарегистрируйтесь' : 'Уже есть аккаунт? Войдите'}
+                </button>
+              </div>
+            </div>
+          </Card>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -245,9 +409,15 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
-        <header className="mb-8 animate-slide-up">
-          <h1 className="text-4xl md:text-5xl font-bold text-gradient mb-2">Invest Passive</h1>
-          <p className="text-muted-foreground">Платформа пассивного инвестирования</p>
+        <header className="mb-8 animate-slide-up flex justify-between items-center">
+          <div>
+            <h1 className="text-4xl md:text-5xl font-bold text-gradient mb-2">Invest Passive</h1>
+            <p className="text-muted-foreground">Платформа пассивного инвестирования</p>
+          </div>
+          <Button variant="outline" onClick={handleLogout} className="border-destructive/50 hover:bg-destructive/10">
+            <Icon name="LogOut" className="w-4 h-4 mr-2" />
+            Выйти
+          </Button>
         </header>
 
         <Tabs defaultValue="dashboard" className="space-y-6">
@@ -294,8 +464,12 @@ const Index = () => {
                 </h3>
                 <div className="space-y-3">
                   <Button onClick={() => setShowDepositDialog(true)} className="w-full gradient-primary text-white hover:opacity-90">
-                    <Icon name="Plus" className="w-4 h-4 mr-2" />
-                    Пополнить баланс
+                    <Icon name="CreditCard" className="w-4 h-4 mr-2" />
+                    Пополнить картой
+                  </Button>
+                  <Button onClick={() => setShowCryptoDialog(true)} className="w-full bg-accent text-white hover:opacity-90">
+                    <Icon name="Bitcoin" className="w-4 h-4 mr-2" />
+                    Пополнить криптой
                   </Button>
                   <Button onClick={() => setShowWithdrawDialog(true)} variant="outline" className="w-full border-primary/50 hover:bg-primary/10">
                     <Icon name="ArrowUpFromLine" className="w-4 h-4 mr-2" />
@@ -660,6 +834,68 @@ const Index = () => {
             >
               <Icon name="Send" className="w-4 h-4 mr-2" />
               {processing ? 'Обработка...' : 'Подать заявку'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showCryptoDialog} onOpenChange={setShowCryptoDialog}>
+        <DialogContent className="bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-2xl">Пополнение криптовалютой</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Выберите криптовалюту</Label>
+              <div className="grid grid-cols-2 gap-3 mt-2">
+                {['USDT', 'BTC', 'ETH', 'BNB'].map((crypto) => (
+                  <Button
+                    key={crypto}
+                    variant={cryptoCurrency === crypto ? 'default' : 'outline'}
+                    className={cryptoCurrency === crypto ? 'gradient-primary text-white' : ''}
+                    onClick={() => setCryptoCurrency(crypto)}
+                  >
+                    <Icon name="Bitcoin" className="w-4 h-4 mr-2" />
+                    {crypto}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <Label>Сумма в {cryptoCurrency}</Label>
+              <Input
+                type="number"
+                placeholder="Минимум 10 USDT"
+                value={cryptoAmount}
+                onChange={(e) => setCryptoAmount(e.target.value)}
+                className="mt-2"
+              />
+            </div>
+
+            <div className="p-4 rounded-lg bg-accent/10 border border-accent/20">
+              <p className="text-sm mb-2 font-semibold">Курс: 1 USDT ≈ 95 ₽</p>
+              <p className="text-xs text-muted-foreground">
+                {cryptoAmount && parseFloat(cryptoAmount) >= 10 
+                  ? `Вы получите: ${(parseFloat(cryptoAmount) * 95).toFixed(2)} ₽` 
+                  : 'Укажите сумму для расчета'}
+              </p>
+            </div>
+
+            <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
+              <p className="text-sm">
+                <Icon name="Info" className="w-4 h-4 inline mr-1" />
+                После перевода средства зачисляются автоматически в течение 10 минут
+              </p>
+            </div>
+
+            <Button
+              className="w-full bg-accent text-white hover:opacity-90"
+              onClick={handleCryptoDeposit}
+              disabled={!cryptoAmount || parseFloat(cryptoAmount) < 10}
+            >
+              <Icon name="Bitcoin" className="w-4 h-4 mr-2" />
+              Получить адрес для пополнения
             </Button>
           </div>
         </DialogContent>
