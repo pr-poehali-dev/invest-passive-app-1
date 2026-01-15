@@ -22,14 +22,24 @@
       "method": "POST",
       "path": "/?action=get_user",
       "body": {
-        "telegram_id": 123456789,
+        "telegram_id": 999888777,
         "username": "test_user"
       },
       "expectedStatus": 200,
       "expectedBody": {
-        "telegram_id": 123456789,
+        "telegram_id": 999888777,
         "balance": 0,
         "referral_code": "string"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Check referral code validity",
+      "method": "GET",
+      "path": "/?action=check_referral&code=TESTCODE",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "valid": false
       },
       "bodyMatcher": "partial"
     }

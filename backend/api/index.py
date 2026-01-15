@@ -125,20 +125,113 @@ def handler(event: dict, context) -> dict:
             if not telegram_id or amount <= 0:
                 return create_response(400, {'error': 'Invalid data'})
             
-            cur.execute("SELECT id FROM users WHERE telegram_id = %s", (telegram_id,))
+            cur.execute("SELECT id, balance FROM users WHERE telegram_id = %s", (telegram_id,))
             user = cur.fetchone()
             
             if not user:
                 return create_response(404, {'error': 'User not found'})
             
             cur.execute("INSERT INTO deposits (user_id, amount) VALUES (%s, %s)", (user[0], amount))
-            cur.execute("UPDATE users SET total_invested = total_invested + %s WHERE id = %s", (amount, user[0]))
-            cur.execute("INSERT INTO transactions (user_id, type, amount, status) VALUES (%s, 'deposit', %s, 'pending')", (user[0], amount))
+            cur.execute("UPDATE users SET balance = balance + %s, total_invested = total_invested + %s WHERE id = %s", (amount, amount, user[0]))
+            cur.execute("INSERT INTO transactions (user_id, type, amount, status) VALUES (%s, 'deposit', %s, 'success')", (user[0], amount))
             conn.commit()
             
             cur.close()
             conn.close()
-            return create_response(200, {'success': True})
+            return create_response(200, {'success': True, 'message': 'Депозит успешно создан'})
+        
+        elif method == 'POST' and path == 'create_withdrawal':
+            body = json.loads(body_str) if body_str else {}
+            telegram_id = body.get('telegram_id')
+            amount = body.get('amount', 0)
+            card = body.get('card', '')
+            
+            if not telegram_id or amount < 100 or not card:
+                return create_response(400, {'error': 'Invalid data (min 100 RUB)'})
+            
+            cur.execute("SELECT id, balance, total_invested FROM users WHERE telegram_id = %s", (telegram_id,))
+            user = cur.fetchone()
+            
+            if not user:
+                return create_response(404, {'error': 'User not found'})
+            
+            available = float(user[1]) - float(user[2])
+            if available < amount:
+                return create_response(400, {'error': 'Insufficient balance'})
+            
+            cur.execute("UPDATE users SET balance = balance - %s, total_withdrawn = total_withdrawn + %s WHERE id = %s", (amount, amount, user[0]))
+            cur.execute("INSERT INTO transactions (user_id, type, amount, status) VALUES (%s, 'withdrawal', %s, 'pending')", (user[0], amount))
+            conn.commit()
+            
+            cur.close()
+            conn.close()
+            return create_response(200, {'success': True, 'message': 'Заявка на вывод создана'})
+        
+        elif method == 'GET' and path == 'check_referral':
+            ref_code = event.get('queryStringParameters', {}).get('code', '')
+            
+            if not ref_code:
+                return create_response(400, {'error': 'Referral code required'})
+            
+            cur.execute("SELECT id, username, referral_code FROM users WHERE referral_code = %s", (ref_code,))
+            referrer = cur.fetchone()
+            
+            if referrer:
+                result = {'valid': True, 'referrer': referrer[1], 'code': referrer[2]}
+            else:
+                result = {'valid': False}
+            
+            cur.close()
+            conn.close()
+            return create_response(200, result)
+        
+        elif method == 'POST' and path == 'register_with_referral':
+            body = json.loads(body_str) if body_str else {}
+            telegram_id = body.get('telegram_id')
+            username = body.get('username', '')
+            ref_code = body.get('referral_code', '')
+            
+            if not telegram_id:
+                return create_response(400, {'error': 'telegram_id required'})
+            
+            cur.execute("SELECT id FROM users WHERE telegram_id = %s", (telegram_id,))
+            existing = cur.fetchone()
+            
+            if existing:
+                return create_response(400, {'error': 'User already exists'})
+            
+            new_ref_code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+            
+            if ref_code:
+                cur.execute("SELECT id FROM users WHERE referral_code = %s", (ref_code,))
+                referrer = cur.fetchone()
+                
+                if referrer:
+                    cur.execute(
+                        "INSERT INTO users (telegram_id, username, referral_code, referred_by) VALUES (%s, %s, %s, %s) RETURNING id",
+                        (telegram_id, username, new_ref_code, referrer[0])
+                    )
+                    new_user = cur.fetchone()
+                    
+                    cur.execute(
+                        "INSERT INTO referrals (referrer_id, referred_id, bonus_amount) VALUES (%s, %s, 0)",
+                        (referrer[0], new_user[0])
+                    )
+                    conn.commit()
+                    
+                    cur.close()
+                    conn.close()
+                    return create_response(200, {'success': True, 'message': 'Registered with referral'})
+            
+            cur.execute(
+                "INSERT INTO users (telegram_id, username, referral_code) VALUES (%s, %s, %s) RETURNING id",
+                (telegram_id, username, new_ref_code)
+            )
+            conn.commit()
+            
+            cur.close()
+            conn.close()
+            return create_response(200, {'success': True, 'message': 'Registered'})
         
         else:
             cur.close()

@@ -46,6 +46,9 @@ const Index = () => {
   const [showDepositDialog, setShowDepositDialog] = useState(false);
   const [showWithdrawDialog, setShowWithdrawDialog] = useState(false);
   const [claiming, setClaiming] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawCard, setWithdrawCard] = useState('');
+  const [processing, setProcessing] = useState(false);
 
   const DEMO_TELEGRAM_ID = 123456789;
 
@@ -86,6 +89,7 @@ const Index = () => {
       
       if (data.success) {
         await fetchUserData();
+        alert('✅ Бонус 100 ₽ получен!');
       } else {
         alert(data.error || 'Ошибка при получении бонуса');
       }
@@ -94,6 +98,88 @@ const Index = () => {
       alert('Ошибка сети');
     } finally {
       setClaiming(false);
+    }
+  };
+
+  const handleDeposit = async () => {
+    if (depositAmount < 1000) {
+      alert('Минимальная сумма депозита: 1000 ₽');
+      return;
+    }
+
+    setProcessing(true);
+    try {
+      const response = await fetch(`${API_URL}?action=create_deposit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telegram_id: DEMO_TELEGRAM_ID,
+          amount: depositAmount
+        })
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        alert('✅ ' + data.message);
+        await fetchUserData();
+        setShowDepositDialog(false);
+      } else {
+        alert(data.error || 'Ошибка при создании депозита');
+      }
+    } catch (error) {
+      console.error('Failed to create deposit:', error);
+      alert('Ошибка сети');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleWithdraw = async () => {
+    const amount = parseFloat(withdrawAmount);
+    
+    if (amount < 100) {
+      alert('Минимальная сумма вывода: 100 ₽');
+      return;
+    }
+
+    if (!withdrawCard || withdrawCard.length < 16) {
+      alert('Укажите корректный номер карты');
+      return;
+    }
+
+    const available = userData ? userData.balance - userData.total_invested : 0;
+    if (amount > available) {
+      alert(`Доступно к выводу: ${available.toFixed(2)} ₽`);
+      return;
+    }
+
+    setProcessing(true);
+    try {
+      const response = await fetch(`${API_URL}?action=create_withdrawal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telegram_id: DEMO_TELEGRAM_ID,
+          amount: amount,
+          card: withdrawCard
+        })
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        alert('✅ ' + data.message);
+        await fetchUserData();
+        setShowWithdrawDialog(false);
+        setWithdrawAmount('');
+        setWithdrawCard('');
+      } else {
+        alert(data.error || 'Ошибка при создании заявки');
+      }
+    } catch (error) {
+      console.error('Failed to create withdrawal:', error);
+      alert('Ошибка сети');
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -524,9 +610,13 @@ const Index = () => {
                 После оплаты нажмите "Проверить оплату"
               </p>
             </div>
-            <Button className="w-full gradient-primary text-white">
+            <Button 
+              className="w-full gradient-primary text-white"
+              onClick={handleDeposit}
+              disabled={processing}
+            >
               <Icon name="CheckCircle" className="w-4 h-4 mr-2" />
-              Проверить оплату
+              {processing ? 'Обработка...' : 'Проверить оплату'}
             </Button>
           </div>
         </DialogContent>
@@ -540,11 +630,22 @@ const Index = () => {
           <div className="space-y-4">
             <div>
               <Label>Сумма вывода</Label>
-              <Input type="number" placeholder="Минимум 100 ₽" className="mt-2" />
+              <Input 
+                type="number" 
+                placeholder="Минимум 100 ₽" 
+                className="mt-2"
+                value={withdrawAmount}
+                onChange={(e) => setWithdrawAmount(e.target.value)}
+              />
             </div>
             <div>
               <Label>Номер карты</Label>
-              <Input placeholder="1234 5678 9012 3456" className="mt-2" />
+              <Input 
+                placeholder="1234 5678 9012 3456" 
+                className="mt-2"
+                value={withdrawCard}
+                onChange={(e) => setWithdrawCard(e.target.value)}
+              />
             </div>
             <div className="p-4 rounded-lg bg-warning/10 border border-warning/20">
               <p className="text-sm">
@@ -552,9 +653,13 @@ const Index = () => {
                 Заявка будет обработана в течение 24 часов
               </p>
             </div>
-            <Button className="w-full gradient-primary text-white">
+            <Button 
+              className="w-full gradient-primary text-white"
+              onClick={handleWithdraw}
+              disabled={processing}
+            >
               <Icon name="Send" className="w-4 h-4 mr-2" />
-              Подать заявку
+              {processing ? 'Обработка...' : 'Подать заявку'}
             </Button>
           </div>
         </DialogContent>
